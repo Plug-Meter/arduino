@@ -54,9 +54,17 @@ void loop()
 
   Serial.write(13); // New line
 
-  Serial.print("Amp: ");
-  Serial.print(corrente);
-  Serial.print("A");
+  Serial.print("Amp.: ");
+  if (corrente > 0.01)
+  {
+  	Serial.print(corrente);
+ 	 Serial.print("A");
+  }
+  else
+  {
+  	Serial.print("---");
+  }
+  
 
   delay(intervalo_medicao_ms);
 }
