@@ -13,7 +13,6 @@ CurrentSensor::CurrentSensor(const int pin, const int sensitivity) {
 }
 
 void CurrentSensor::determineVQ() {
-	Serial.print("estimating avg. quiscent voltage:");
 	long VQ = 0;
 	int num_samples = 5000;
 	// read a few samples to stabilise value
@@ -22,7 +21,6 @@ void CurrentSensor::determineVQ() {
 		delay(1); // depends on sampling (on filter capacitor), can be 1/80000 (80kHz) max.
 	}
 	VQ /= num_samples;
-	Serial.print(map(VQ, 0, 1023, 0, 5000));Serial.println(" mV");
 	this->VQ = int(VQ);
 }
 
