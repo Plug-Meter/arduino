@@ -16,24 +16,28 @@ void setup()
 
   Serial.write(22); // Start LCD with no cursor and no blink
 
+  Serial.print("Calibrando.");
+  Serial.write(13); // New line
+  Serial.print("Aguarde...");
+
   sensor.determineVQ(); // Read initial measurements for calibration
 }
 
 void loop()
 {
-  double corrente = sensor.readCurrent();
-  double potencia = corrente * rede;
+  float corrente = sensor.readCurrent();
+  float potencia = corrente * rede;
 
   potencia_total_segundos += potencia;
 
-  double potencia_total_horas = potencia_total_segundos / 3600;
-  double custo_total = (potencia_total_horas / 1000) * preco_kwh;
+  float potencia_total_horas = potencia_total_segundos / 3600;
+  float custo_total = (potencia_total_horas / 1000) * preco_kwh;
   if (custo_total < 0) 
   {
   	custo_total = 0;
   }
 
-  double custo_est_hora = (potencia / 1000) * preco_kwh;
+  float custo_est_hora = (potencia / 1000) * preco_kwh;
   if (custo_est_hora < 0) 
   {
   	custo_est_hora = 0;
@@ -44,15 +48,16 @@ void loop()
   delay(5);
 
   Serial.print("Hora: R$");
-  Serial.print(custo_est_hora);
+  Serial.print(custo_est_hora, 2);
 
   Serial.write(13); // New line
 
   Serial.print("Amp.: ");
   if (corrente > 0.01)
   {
-  	Serial.print(corrente);
- 	 Serial.print("A");
+    corrente += 0.005; // Arredondar para duas casas decimais
+  	Serial.print(corrente, 2);
+ 	  Serial.print("A");
   }
   else
   {
