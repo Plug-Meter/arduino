@@ -1,19 +1,14 @@
-// EmonLib - openenergymonitor.org, Licence GNU GPL V3
-// https://github.com/openenergymonitor/EmonLib
+#include "CurrentSensor.h"
 
-#include "EmonLib.h"
-
-const int intervalo_medicao_ms = 1000; // Intervalo entre as medições
-const int pin_sensor = 1; // Pino 	analógico que o sensor está conectado
-const int numero_amostras = 1480; // Número de amostras que o sensor irá obter para cada requisição
+const int intervalo_medicao_ms = 150; // Intervalo entre as medições
+const int pin_sensor = 1; // Pino analógico que o sensor está conectado
 const double rede = 127.0; // Tensao da rede elétrica em Volts
-const double calibragem = 66.0; // Parâmetro de calibragem do sensor
-const double leitura_inicial = 0.24; // Leitura residual do sensor quando nada está conectado
+const double sensibilidade = 66.0; // Parâmetro de sensibilidade do sensor (66mV/A)
 const double preco_kwh = 0.71; // Preço de 1 kW.h da Light
 
 double potencia_total_segundos = 0.0;
 
-EnergyMonitor emon;
+CurrentSensor sensor(pin_sensor, sensibilidade);
 
 void setup()
 {
@@ -21,13 +16,12 @@ void setup()
 
   Serial.write(22); // Start LCD with no cursor and no blink
 
-  emon.current(pin_sensor, calibragem);
+  sensor.determineVQ(); // Read initial measurements for calibration
 }
 
 void loop()
 {
-  double irms = emon.calcIrms(numero_amostras);
-  double corrente = irms - leitura_inicial;
+  double corrente = sensor.readCurrent();
   double potencia = corrente * rede;
 
   potencia_total_segundos += potencia;
