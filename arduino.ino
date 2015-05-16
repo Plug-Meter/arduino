@@ -1,69 +1,89 @@
+#include <SoftwareSerial.h>
 #include "CurrentSensor.h"
+#include "Meter.h"
+#include "ESP8266.h"
 
-const int intervalo_medicao_ms = 150; // Intervalo entre as medições
+#define BUFFER_SIZE 128
+
 const int pin_sensor = 1; // Pino analógico que o sensor está conectado
+const int pin_relay = 4; // Pino do relé
+const int pin_lcd = 10; // Pino do display lcd (conectado à porta RX do display)
+const int pin_esp8266_rx = 2; // Pino do ESP8266 (conectado à porta TX do ESP)
+const int pin_esp8266_tx = 3; // Pino do ESP8266 (conectado à porta RX do ESP)
+const int intervalo_medicao_ms = 150; // Intervalo entre as medições
 const double rede = 127.0; // Tensao da rede elétrica em Volts
 const double sensibilidade = 66.0; // Parâmetro de sensibilidade do sensor (66mV/A)
 const double preco_kwh = 0.71; // Preço de 1 kW.h da Light
 
+HardwareSerial& dbgTerminal = Serial; // Serial usado para debug
+SoftwareSerial lcdTerminal(0, pin_lcd); // Serial usado para o display lcd
+SoftwareSerial espSerial(pin_esp8266_rx, pin_esp8266_tx); // Serial usado para o ESP8266
+ESP8266 wifi(espSerial);
+
+int relay_state = LOW;
+
+char buffer[BUFFER_SIZE];
 double potencia_total_segundos = 0.0;
 
 CurrentSensor sensor(pin_sensor, sensibilidade);
+Meter meter(rede, preco_kwh);
 
 void setup()
 {
-  Serial.begin(9600);
+	pinMode(pin_relay, OUTPUT);
 
-  Serial.write(22); // Start LCD with no cursor and no blink
+	dbgTerminal.begin(9600);
 
-  Serial.print("Calibrando.");
-  Serial.write(13); // New line
-  Serial.print("Aguarde...");
+	lcdTerminal.begin(9600);
+	lcdTerminal.write(22); // Start LCD with no cursor and no blink
+	lcdTerminal.print("Iniciando.");
+	lcdTerminal.write(13); // New line
+	lcdTerminal.print("Aguarde...");
 
-  sensor.determineVQ(); // Read initial measurements for calibration
+	// setupWiFi();
+
+	dbgTerminal.println("Calibrando sensor...");
+	sensor.determineVQ(); // Read initial measurements for calibration
+	dbgTerminal.println("Sensor calibrado.");
 }
 
 void loop()
 {
-  float corrente = sensor.readCurrent();
-  float potencia = corrente * rede;
+	float corrente = sensor.readCurrent();
+	meter.setCorrente(corrente);
 
-  potencia_total_segundos += potencia;
+	dbgTerminal.print("Corrente atual: ");
+	dbgTerminal.print(corrente);
+	dbgTerminal.println("A");
 
-  float potencia_total_horas = potencia_total_segundos / 3600;
-  float custo_total = (potencia_total_horas / 1000) * preco_kwh;
-  if (custo_total < 0) 
-  {
-  	custo_total = 0;
-  }
+	atualizaDisplay();
 
-  float custo_est_hora = (potencia / 1000) * preco_kwh;
-  if (custo_est_hora < 0) 
-  {
-  	custo_est_hora = 0;
-  }
+	delay(intervalo_medicao_ms);
+}
 
-  // Limpar LCD
-  Serial.write(12);
-  delay(5);
+void atualizaDisplay()
+{
+	// Limpar LCD
+	lcdTerminal.write(12);
+	delay(5);
 
-  Serial.print("Hora: R$");
-  Serial.print(custo_est_hora, 2);
+	lcdTerminal.print("Hora: R$");
+	lcdTerminal.print(meter.getCustoEstimadoHora(), 2);
 
-  Serial.write(13); // New line
+	lcdTerminal.write(13); // New line
 
-  Serial.print("Amp.: ");
-  if (corrente > 0.01)
-  {
-    corrente += 0.005; // Arredondar para duas casas decimais
-  	Serial.print(corrente, 2);
- 	  Serial.print("A");
-  }
-  else
-  {
-  	Serial.print("---");
-  }
-  
+	lcdTerminal.print("Amp.: ");
+	float corrente = meter.getCorrente();
+	if (corrente > 0.01)
+	{
+		corrente += 0.005; // Arredondar para duas casas decimais
+		lcdTerminal.print(corrente, 2);
+		lcdTerminal.print("A");
+	}
+	else
+	{
+		lcdTerminal.print("---");
+	}
 
-  delay(intervalo_medicao_ms);
+
 }
