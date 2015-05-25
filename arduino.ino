@@ -5,7 +5,10 @@
 
 #define BUFFER_SIZE 128
 
-const int pin_sensor = 1; // Pino analógico que o sensor está conectado
+#define RELAY_STATE_ON LOW
+#define RELAY_STATE_OFF HIGH
+
+const int pin_sensor = A1; // Pino analógico que o sensor está conectado
 const int pin_relay = 4; // Pino do relé
 const int pin_lcd = 10; // Pino do display lcd (conectado à porta RX do display)
 const int pin_esp8266_rx = 2; // Pino do ESP8266 (conectado à porta TX do ESP)
@@ -15,10 +18,10 @@ const double sensibilidade = 66.0; // Parâmetro de sensibilidade do sensor (66m
 const double preco_kwh = 0.71; // Preço de 1 kW.h da Light
 
 HardwareSerial& dbgTerminal = Serial; // Serial usado para debug
-SoftwareSerial espSerial(pin_esp8266_rx, pin_esp8266_tx); // Serial usado para o ESP8266
-ESP8266 wifi(espSerial);
+SoftwareSerial espTerminal(pin_esp8266_rx, pin_esp8266_tx); // Serial usado para o ESP8266
+ESP8266 wifi(espTerminal);
 SoftwareSerial lcdTerminal(0, pin_lcd); // Serial usado para o display lcd
-int relay_state = LOW;
+int relay_state = RELAY_STATE_ON;
 
 char buffer[BUFFER_SIZE];
 double potencia_total_segundos = 0.0;
@@ -92,13 +95,15 @@ void atualizaDisplay()
 	}
 }
 
-void setupWiFi() {
+void setupWiFi()
+{
 	dbgTerminal.print("Setting up Wi-Fi\r\n");
 
-	espSerial.listen();
-	espSerial.setTimeout(100);
+	espTerminal.listen();
+	espTerminal.setTimeout(100);
 
-	if (!wifi.setOprToStationSoftAP()) {
+	if (!wifi.setOprToStationSoftAP())
+	{
 		dbgTerminal.print("Error creating AP\r\n");
 	}
 
@@ -117,15 +122,18 @@ void setupWiFi() {
 	//     }
 	// }
 
-	if (!wifi.enableMUX()) {
+	if (!wifi.enableMUX())
+	{
 		dbgTerminal.print("multiple err\r\n");
 	}
 
-	if (!wifi.startTCPServer(80)) {
+	if (!wifi.startTCPServer(80))
+	{
 		dbgTerminal.print("start tcp server err\r\n");
 	}
 
-	if (!wifi.setTCPServerTimeout(10)) { 
+	if (!wifi.setTCPServerTimeout(10))
+	{ 
 		dbgTerminal.print("set tcp server timout err\r\n");
 	}
 
@@ -136,60 +144,107 @@ void setupWiFi() {
 	dbgTerminal.println(wifi.getStationIp());
 }
 
-void httpServerLoop() {
-	int ch_id, packet_len;
-	int body_state;
-	char *pb;  
-	espSerial.readBytesUntil('\n', buffer, BUFFER_SIZE);
+boolean processHttpRequest(const char* request, String& output)
+{
+	if (strncmp(request, "POST /relay/", 12) == 0)
+	{
+		int body_state = request[12] - '0';
 
-	if(strncmp(buffer, "+IPD,", 5)==0) {
+		if (body_state == 1)
+		{
+			relay_state = HIGH;
+		}
+		else if (body_state == 0)
+		{
+			relay_state = LOW;
+		}
+		else
+		{
+			dbgTerminal.println("Post body incorrect");
+		}
+
+		digitalWrite(pin_relay, relay_state);
+
+		output = String(relay_state);
+	}
+	else if (strncmp(request, "GET /relay", 10) == 0)
+	{
+		if (relay_state == RELAY_STATE_ON)
+		{
+			output = String("ON");
+		}
+		else if (relay_state == RELAY_STATE_OFF)
+		{
+			output = String("OFF");
+		}
+	}
+	else if (strncmp(request, "POST /on", 8) == 0)
+	{
+		relay_state = RELAY_STATE_ON;
+		digitalWrite(pin_relay, relay_state);
+
+		output = String("ON");
+	}
+	else if (strncmp(request, "POST /off", 9) == 0)
+	{
+		relay_state = RELAY_STATE_OFF;
+		digitalWrite(pin_relay, relay_state);
+
+		output = String("OFF");
+	} 
+	else if (strncmp(request, "GET /current", 12) == 0)
+	{
+		output = String(meter.getCorrente());
+	}
+	else if (strncmp(request, "GET / ", 6) == 0)
+	{
+		output = String("It works!");
+	}
+	else
+	{
+		return false;
+	}
+
+	return true;
+}
+
+void httpServerLoop()
+{
+	int ch_id, packet_len;
+	char *pb;  
+	espTerminal.readBytesUntil('\n', buffer, BUFFER_SIZE);
+
+	if (strncmp(buffer, "+IPD,", 5) == 0)
+	{
 		// request: +IPD,ch,len:data
 		sscanf(buffer+5, "%d,%d", &ch_id, &packet_len);
-		if (packet_len > 0) {
+		if (packet_len > 0)
+		{
 			// read serial until packet_len character received
 			// start from :
 			pb = buffer+5;
 			while(*pb!=':') pb++;
 			pb++;
-			if (strncmp(pb, "POST /relay/", 12) == 0) {
-				body_state = pb[12] - '0';
 
+			String output;
+			boolean httpRequestOk;
+			if (httpRequestOk = processHttpRequest(pb, output))
+			{
 				clearSerialBuffer();
-
-				if (body_state == 1) {
-					relay_state = HIGH;
-				} else if (body_state == 0) {
-					relay_state = LOW;
-				} else {
-					dbgTerminal.println("Post body incorrect");
-				}
-
-				digitalWrite(pin_relay, relay_state);
-
-				String content = String(relay_state);
-				httpResponseWithBody(ch_id, content);
-
-			} else if (strncmp(pb, "GET /current ", 6) == 0) {
-				clearSerialBuffer();
-
-				String content = String(meter.getCorrente());
-				httpResponseWithBody(ch_id, content);
-
-			} else if (strncmp(pb, "GET / ", 6) == 0) {
-				clearSerialBuffer();
-
-				String content = String(relay_state);
-				httpResponseWithBody(ch_id, content);
-
-			} else {
+				httpResponseWithBody(ch_id, output);
+			}
+			else
+			{
 				httpResponseWith404(ch_id);
 			}
+
 		}
 	}
 	clearBuffer();
 }
 
-void httpResponseWith404(int ch_id) {
+void httpResponseWith404(int ch_id)
+{
 	String header;
 	String content = String("404 Not found");
 
@@ -202,20 +257,22 @@ void httpResponseWith404(int ch_id) {
 	header += (int)(content.length());
 	header += "\r\n\r\n";
 
-	espSerial.print("AT+CIPSEND=");
-	espSerial.print(ch_id);
-	espSerial.print(",");
-	espSerial.println(header.length()+content.length());
+	espTerminal.print("AT+CIPSEND=");
+	espTerminal.print(ch_id);
+	espTerminal.print(",");
+	espTerminal.println(header.length()+content.length());
 	delay(10);
 
-	if (espSerial.find(">")) {
-		espSerial.print(header);
-		espSerial.print(content);
+	if (espTerminal.find(">"))
+	{
+		espTerminal.print(header);
+		espTerminal.print(content);
 		delay(10);
 	}
 }
 
-void httpResponseWithBody(int ch_id, String& content) {
+void httpResponseWithBody(int ch_id, String& content)
+{
 	String header;
 
 	header =  "HTTP/1.1 200 OK\r\n";
@@ -226,30 +283,33 @@ void httpResponseWithBody(int ch_id, String& content) {
 	header += (int)(content.length());
 	header += "\r\n\r\n";
 
-	espSerial.print("AT+CIPSEND=");
-	espSerial.print(ch_id);
-	espSerial.print(",");
-	espSerial.println(header.length()+content.length());
+	espTerminal.print("AT+CIPSEND=");
+	espTerminal.print(ch_id);
+	espTerminal.print(",");
+	espTerminal.println(header.length()+content.length());
 	delay(10);
 
-	if (espSerial.find(">")) {
-		espSerial.print(header);
-		espSerial.print(content);
+	if (espTerminal.find(">"))
+	{
+		espTerminal.print(header);
+		espTerminal.print(content);
 		delay(10);
 	}
 }
 
 
 // Get the data from the WiFi module and send it to the debug serial port
-String GetResponse(String AT_Command){
+String GetResponse(String AT_Command)
+{
 	String tmpData;
 
-	espSerial.println(AT_Command);
+	espTerminal.println(AT_Command);
 
 	delay(10);
 
-	while (espSerial.available() >0 )  {
-		char c = espSerial.read();
+	while (espTerminal.available() > 0)
+	{
+		char c = espTerminal.read();
 		tmpData += c;
 
 		if (tmpData.indexOf(AT_Command) > -1)         
@@ -262,14 +322,18 @@ String GetResponse(String AT_Command){
 	return tmpData;
 }
 
-void clearSerialBuffer(void) {
-	while (espSerial.available() > 0) {
-		espSerial.read();
+void clearSerialBuffer(void)
+{
+	while (espTerminal.available() > 0)
+	{
+		espTerminal.read();
 	}
 }
 
-void clearBuffer(void) {
-	for (int i=0; i<BUFFER_SIZE; i++) {
+void clearBuffer(void)
+{
+	for (int i=0; i<BUFFER_SIZE; i++)
+	{
 		buffer[i] = 0;
 	}
 }
