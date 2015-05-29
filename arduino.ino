@@ -1,12 +1,12 @@
+#include <EEPROM.h>
+
 #include <SoftwareSerial.h>
 #include "CurrentSensor.h"
 #include "Meter.h"
+#include "Relay.h"
 #include "ESP8266.h"
 
 #define BUFFER_SIZE 128
-
-#define RELAY_STATE_ON LOW
-#define RELAY_STATE_OFF HIGH
 
 const int pin_sensor = A1; // Pino analógico que o sensor está conectado
 const int pin_relay = 4; // Pino do relé
@@ -21,7 +21,6 @@ HardwareSerial& dbgTerminal = Serial; // Serial usado para debug
 SoftwareSerial espTerminal(pin_esp8266_rx, pin_esp8266_tx); // Serial usado para o ESP8266
 ESP8266 wifi(espTerminal);
 SoftwareSerial lcdTerminal(0, pin_lcd); // Serial usado para o display lcd
-int relay_state = RELAY_STATE_ON;
 
 char buffer[BUFFER_SIZE];
 double potencia_total_segundos = 0.0;
@@ -29,10 +28,12 @@ unsigned long millis_ultima_medicao = 0;
 
 CurrentSensor sensor(pin_sensor, sensibilidade);
 Meter meter(rede, preco_kwh);
+Relay relay(pin_relay);
 
 void setup()
 {
-	pinMode(pin_relay, OUTPUT);
+	dbgTerminal.print("Estado relay salvo na memoria: ");
+	dbgTerminal.println(relay.getState());
 
 	dbgTerminal.begin(9600);
 
@@ -146,49 +147,26 @@ void setupWiFi()
 
 boolean processHttpRequest(const char* request, String& output)
 {
-	if (strncmp(request, "POST /relay/", 12) == 0)
+	if (strncmp(request, "GET /relay", 10) == 0)
 	{
-		int body_state = request[12] - '0';
-
-		if (body_state == 1)
-		{
-			relay_state = HIGH;
-		}
-		else if (body_state == 0)
-		{
-			relay_state = LOW;
-		}
-		else
-		{
-			dbgTerminal.println("Post body incorrect");
-		}
-
-		digitalWrite(pin_relay, relay_state);
-
-		output = String(relay_state);
-	}
-	else if (strncmp(request, "GET /relay", 10) == 0)
-	{
-		if (relay_state == RELAY_STATE_ON)
+		if (relay.getState() == ON)
 		{
 			output = String("ON");
 		}
-		else if (relay_state == RELAY_STATE_OFF)
+		else if (relay.getState() == OFF)
 		{
 			output = String("OFF");
 		}
 	}
 	else if (strncmp(request, "POST /on", 8) == 0)
 	{
-		relay_state = RELAY_STATE_ON;
-		digitalWrite(pin_relay, relay_state);
+		relay.setState(ON);
 
 		output = String("ON");
 	}
 	else if (strncmp(request, "POST /off", 9) == 0)
 	{
-		relay_state = RELAY_STATE_OFF;
-		digitalWrite(pin_relay, relay_state);
+		relay.setState(OFF);
 
 		output = String("OFF");
 	} 
@@ -198,7 +176,15 @@ boolean processHttpRequest(const char* request, String& output)
 	}
 	else if (strncmp(request, "GET / ", 6) == 0)
 	{
-		output = String("It works!");
+		output = String();
+		output = output + "{" + "\"corrente\": " + meter.getCorrente() + ", "
+						+ "\"rede\": " + meter.getRede() + ", "
+						+ "\"preco_kwh\": " + meter.getPrecoKwh() + ", "
+						+ "\"potencia\": " + meter.getPotencia() + ", "
+						+ "\"custo_est_hora\": " + meter.getCustoEstimadoHora() + ", "
+						+ "\"custo_total\": " + meter.getCustoTotal() + ", "
+						+ "\"rele\": \"" + (relay.getState() == ON ? "ON" : "OFF") + "\""
+						+ "}";
 	}
 	else
 	{
@@ -276,7 +262,7 @@ void httpResponseWithBody(int ch_id, String& content)
 	String header;
 
 	header =  "HTTP/1.1 200 OK\r\n";
-	header += "Content-Type: text/html\r\n";
+	header += "Content-Type: text/json\r\n";
 	header += "Connection: close\r\n";  
 
 	header += "Content-Length: ";
