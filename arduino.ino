@@ -20,7 +20,7 @@ const double preco_kwh = 0.71; // Preço de 1 kW.h da Light
 HardwareSerial& dbgTerminal = Serial; // Serial usado para debug
 SoftwareSerial espTerminal(pin_esp8266_rx, pin_esp8266_tx); // Serial usado para o ESP8266
 ESP8266 wifi(espTerminal);
-SoftwareSerial lcdTerminal(0, pin_lcd); // Serial usado para o display lcd
+SoftwareSerial lcdTerminal(11, pin_lcd); // Serial usado para o display lcd
 
 char buffer[BUFFER_SIZE];
 double potencia_total_segundos = 0.0;
@@ -58,15 +58,15 @@ void loop()
 	float corrente = sensor.readCurrent();
 	meter.setCorrente(corrente);
 
-	dbgTerminal.print("Corrente atual: ");
-	dbgTerminal.print(corrente);
-	dbgTerminal.println("A");
+	// dbgTerminal.print("Corrente atual: ");
+	// dbgTerminal.print(corrente);
+	// dbgTerminal.println("A");
 
 	atualizaDisplay();
 
 	millis_ultima_medicao = millis_atual;
-	dbgTerminal.print("intervalo desde a ultima medicao: ");
-	dbgTerminal.println(millis_intervalo_ultima_medicao);
+	// dbgTerminal.print("intervalo desde a ultima medicao: ");
+	// dbgTerminal.println(millis_intervalo_ultima_medicao);
 
 	httpServerLoop();
 }
@@ -109,7 +109,9 @@ void setupWiFi()
 	}
 
 	dbgTerminal.println(GetResponse("AT+CWSAP=\"Plug Meter 1\",\"plugmeter\",1,0"));
-	delay(10);
+	delay(5000);
+	dbgTerminal.println(GetResponse("AT+CSYSWDTDISABLE"));
+	delay(1000);
 
  	//    while (1) {
  	//    	dbgTerminal.println("Trying to connect to ap");
@@ -199,6 +201,8 @@ void httpServerLoop()
 	int ch_id, packet_len;
 	char *pb;  
 	espTerminal.readBytesUntil('\n', buffer, BUFFER_SIZE);
+
+	dbgTerminal.println(buffer);
 
 	if (strncmp(buffer, "+IPD,", 5) == 0)
 	{
