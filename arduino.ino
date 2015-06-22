@@ -113,17 +113,17 @@ void setupWiFi()
 	dbgTerminal.println(GetResponse("AT+CSYSWDTDISABLE"));
 	delay(1000);
 
- 	//    while (1) {
- 	//    	dbgTerminal.println("Trying to connect to ap");
-	//     if (wifi.joinAP(SSID, PASSWORD)) {
-	//         dbgTerminal.print("Join AP success\r\n");
-	//         dbgTerminal.print("IP: ");       
-	//         dbgTerminal.println(wifi.getLocalIP().c_str());
-	//         break;
-	//     } else {
-	//         dbgTerminal.print("Join AP failure\r\n");
-	//     }
-	// }
+
+	dbgTerminal.println("Trying to connect to ap");
+	if (wifi.joinAP("hsNCE", "")) 
+	{
+		dbgTerminal.print("Join AP success\r\n");
+		dbgTerminal.print("IP: ");       
+		dbgTerminal.println(wifi.getLocalIP().c_str());
+	}
+	else {
+		dbgTerminal.print("Join AP failure\r\n");
+	}
 
 	if (!wifi.enableMUX())
 	{
